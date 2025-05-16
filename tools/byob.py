@@ -3,6 +3,7 @@ import re
 import requests
 from bs4 import BeautifulSoup
 from openai import OpenAI
+import azure.functions as func
 
 TRUNCATE_SCRAPED_TEXT = 50000
 
@@ -135,6 +136,21 @@ def build_rag_summary(search_query):
         log.append(f"🔥 Build failed: {e}")
         raise
 
+def web_search_handler(req: func.HttpRequest) -> func.HttpResponse:
+    log = ["🌐 Starting BYOB web search..."]
+    try:
+        query = req.params.get("query")
+        if not query:
+            return func.HttpResponse("Missing 'query' parameter.", status_code=400)
+
+        log.append(f"🔍 Query received: {query}")
+        result = build_rag_summary(query)
+        return func.HttpResponse(result, mimetype="text/plain")
+
+    except Exception as e:
+        log.append(f"❌ Failed: {e}")
+        return func.HttpResponse("\n".join(log), status_code=500)
+
 if __name__ == "__main__":
     from azure.functions import HttpRequest
     from unittest.mock import MagicMock
@@ -149,4 +165,3 @@ if __name__ == "__main__":
 
     query = "Using only the file https://www.sec.gov/Archives/edgar/data/320193/000130817925000008/aapl4359751-def14a.htm who are the listed board of directors and what is there position"
     print(build_rag_summary(query))
-    print(build_rag_summary("Todays News"))
