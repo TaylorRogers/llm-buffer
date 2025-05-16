@@ -1,10 +1,10 @@
 import os
+import re
 import requests
 from bs4 import BeautifulSoup
 from openai import OpenAI
 
 TRUNCATE_SCRAPED_TEXT = 50000
-
 
 def search_google(query, num_results=5, log=None):
     if log is None:
@@ -24,13 +24,12 @@ def search_google(query, num_results=5, log=None):
     log.append("✅ Search completed successfully.")
     return response.json().get("items", [])
 
-
 def scrape_page(url, max_chars=TRUNCATE_SCRAPED_TEXT, log=None):
     if log is None:
         log = []
     try:
         log.append(f"🌐 Scraping URL: {url}")
-        headers = {"User-Agent": "Mozilla/5.0"}
+        headers = {"User-Agent": "sec-bot@TaylorRogers@RogersDataWorks.onmicrosoft.com"}
         response = requests.get(url, headers=headers, timeout=10)
         response.raise_for_status()
         soup = BeautifulSoup(response.content, "html.parser")
@@ -42,7 +41,6 @@ def scrape_page(url, max_chars=TRUNCATE_SCRAPED_TEXT, log=None):
     except Exception as e:
         log.append(f"❌ Scraping failed for {url}: {e}")
         return f"Error retrieving {url}: {e}"
-
 
 def summarize_content(content, prompt, client, log=None):
     if log is None:
@@ -66,13 +64,44 @@ def summarize_content(content, prompt, client, log=None):
         log.append(f"❌ Summarization failed: {e}")
         return "Error in summarization"
 
-
 def build_rag_summary(search_query):
     log = [f"🔁 Starting RAG summary for: {search_query}"]
     try:
-        api_key = os.getenv("GOOGLE_API_KEY")
-        cse_id = os.getenv("GOOGLE_CSE_ID")
         client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+        # Check for direct URL
+        url_match = re.search(r"https?://\S+", search_query)
+        if url_match:
+            url = url_match.group(0)
+
+            # Workaround for IX viewer redirect
+            if "ix?doc=" in url:
+                url = url.split("ix?doc=")[-1]
+                if not url.startswith("https://"):
+                    url = "https://www.sec.gov" + url
+                log.append(f"🔁 Rewritten SEC URL: {url}")
+
+            log.append(f"🔗 Direct URL detected: {url}")
+            content = scrape_page(url, log=log)
+            summary = summarize_content(content, search_query, client, log=log)
+
+            final_prompt = (
+                f"Using only the following document content, answer this query: '{search_query}'.\n"
+                f"Cite the URL as your source: {url}"
+            )
+            log.append("📦 Building response from direct document...")
+            response = client.chat.completions.create(
+                model="gpt-4o",
+                messages=[
+                    {"role": "system", "content": final_prompt},
+                    {"role": "user", "content": content}
+                ],
+                temperature=0
+            )
+            log.append("✅ Final response ready (from URL).")
+            return response.choices[0].message.content
+
+        # Otherwise, perform Google search
         results = search_google(search_query, log=log)
         structured_data = []
 
@@ -91,7 +120,7 @@ def build_rag_summary(search_query):
             f"Using the following search data, answer this query: '{search_query}'.\n"
             f"Cite your sources."
         )
-        log.append("📦 Building final summary response...")
+        log.append("📦 Building final summary response (from Google)...")
         final_response = client.chat.completions.create(
             model="gpt-4o",
             messages=[
@@ -100,12 +129,11 @@ def build_rag_summary(search_query):
             ],
             temperature=0
         )
-        log.append("✅ Final response ready.")
+        log.append("✅ Final response ready (from search).")
         return final_response.choices[0].message.content
     except Exception as e:
         log.append(f"🔥 Build failed: {e}")
         raise
-
 
 if __name__ == "__main__":
     from azure.functions import HttpRequest
@@ -119,5 +147,6 @@ if __name__ == "__main__":
         for key, value in local_settings.get("Values", {}).items():
             os.environ.setdefault(key, value)
 
-    query = "Latest OpenAI product launches"
+    query = "Using only the file https://www.sec.gov/Archives/edgar/data/320193/000130817925000008/aapl4359751-def14a.htm who are the listed board of directors and what is there position"
     print(build_rag_summary(query))
+    print(build_rag_summary("Todays News"))
