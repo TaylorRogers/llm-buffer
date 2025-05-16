@@ -5,3 +5,4 @@
 azure-functions
 azure-storage-blob==12.19.1
 openai
+beautifulsoup4
