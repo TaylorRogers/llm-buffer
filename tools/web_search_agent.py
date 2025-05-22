@@ -87,7 +87,7 @@ def search_google(query, num_results=5, log=None):
     log.append("✅ Search completed successfully.")
     return response.json().get("items", [])
 
-def web_search_fn(search_query):
+def web_search_fn(search_query, log=None):
     """Searches the web or a specific URL and returns a concise, cited summary."""
     if log is None:
         log = []
@@ -196,8 +196,8 @@ def create_web_search_agent():
 if __name__ == "__main__":
     from tools.load_local_settings import load_local_settings
     load_local_settings()
-
-    query = "https://www.sec.gov/Archives/edgar/data/320193/000130817925000008/aapl4359751-def14a.htm who listed board of directors and position"
+    query = "look up nearby restraunts in newberg or"
+    #query = "https://www.sec.gov/Archives/edgar/data/320193/000130817925000008/aapl4359751-def14a.htm who listed board of directors and position"
     #AfterAgentquery = "Using only the file https://www.sec.gov/Archives/edgar/data/320193/000130817925000008/aapl4359751-def14a.htm who are the listed board of directors and what is their position"
     test_log: list[str] = []
 
