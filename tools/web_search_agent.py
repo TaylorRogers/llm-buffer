@@ -87,7 +87,7 @@ def search_google(query, num_results=5, log=None):
     log.append("✅ Search completed successfully.")
     return response.json().get("items", [])
 
-def web_search_fn(search_query, log=None):
+def web_search_fn(search_query):
     """Searches the web or a specific URL and returns a concise, cited summary."""
     if log is None:
         log = []

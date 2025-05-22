@@ -70,7 +70,8 @@ def build_response(result, code=200):
     return func.HttpResponse(json.dumps(result, indent=2), mimetype="application/json", status_code=code)
 
 
-def llm_buffer_handler(req: func.HttpRequest, log: list[str]) -> func.HttpResponse:
+def llm_buffer_handler(req: func.HttpRequest) -> func.HttpResponse:
+    log = []
     log.append("🔁 Starting LLM query buffer process...")
     try:
         query, model, showlog = get_params(req, log)
@@ -117,23 +118,18 @@ if __name__ == "__main__":
     from unittest.mock import MagicMock
 
     # Example 1
-    test_log: list[str] = []
     mock_req = MagicMock(spec=HttpRequest)
     mock_req.params = {"query": "What is the capital of Germany", "model": "gpt-4o-mini"}
-    response = llm_buffer_handler(mock_req, log=test_log)
+    response = llm_buffer_handler(mock_req)
     print("=== ANSWER ===\n", response.get_body().decode())
-    print("\n=== LOG ===")
-    print("\n".join(test_log))
 
     # Example 2
-    test_log2: list[str] = []
     mock_req2 = MagicMock(spec=HttpRequest)
     prompt2 = (
         "Using only the file https://www.sec.gov/Archives/edgar/data/320193/000130817925000008/"
-        "aapl4359751-def14a.htm, who are the listed board of directors and their positions? llama"
+        "aapl4359751-def14a.htm, who are the listed board of directors and their positions? llama222"
     )
     mock_req2.params = {"query": prompt2, "model": "gpt-4o-mini", "showlog": "0"}
-    response2 = llm_buffer_handler(mock_req2, log=test_log2)
+    response2 = llm_buffer_handler(mock_req2)
     print("\n=== ANSWER 2 ===\n", response2.get_body().decode())
-    print("\n=== LOG 2 ===")
-    print("\n".join(test_log2))
+
