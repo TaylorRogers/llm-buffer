@@ -10,9 +10,6 @@ from langchain_core.messages import BaseMessage, HumanMessage
 from langchain.output_parsers.openai_functions import JsonOutputFunctionsParser
 from langgraph.graph import StateGraph, END
 
-# ───────────────────────────────────────
-# Ensure project root is on sys.path so we can import from tools/
-# ───────────────────────────────────────
 project_root = Path(__file__).resolve().parent.parent
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
@@ -23,26 +20,24 @@ from tools.web_search_agent import create_web_search_agent
 class AgentState(TypedDict):
     messages: Annotated[Sequence[BaseMessage], operator.add]
     next: str
-
+    steps: int  # NEW: track supervisor recursions
 
 def agent_node(state, agent: AgentExecutor, name: str):
     result = agent.invoke(state)
     return {"messages": [HumanMessage(content=result["output"], name=name)]}
 
-
 def get_members():
     return ["Web_Searcher", "Insight_Researcher"]
 
-
 def create_supervisor():
     members = get_members()
+    options = ["FINISH"] + members
     system_prompt = (
         f"As a supervisor, oversee the full user query and route it to the right worker:\n"
         f"- If it contains a document URL, use Web_Searcher.\n"
         f"- Otherwise, if deeper analysis is needed, use Insight_Researcher.\n"
         f"Choose one of: {members} or FINISH."
     )
-    options = ["FINISH"] + members
 
     function_def = {
         "name": "route",
@@ -70,16 +65,21 @@ def create_supervisor():
         | JsonOutputFunctionsParser()
     )
 
+def supervisor_node(state, supervisor_chain):
+    steps = state.get("steps", 0) + 1
+    if steps > 2:
+        return {"next": "FINISH", "messages": state["messages"], "steps": steps}
+    out = supervisor_chain.invoke(state)
+    out["steps"] = steps
+    return out
 
 def create_search_agent():
-    # trust the imported web_search agent to handle everything
     agent = create_web_search_agent()
     return functools.partial(agent_node, agent=agent, name="Web_Searcher")
 
-
 def create_insights_researcher_agent():
     llm = ChatOpenAI(model="gpt-4o", temperature=0, verbose=True)
-    tools = []  # no additional tools needed here
+    tools = []
     system_prompt = (
         "You are an Insight Researcher. Do step-by-step analysis:\n"
         "1. Identify key topics in the full user query.\n"
@@ -94,14 +94,13 @@ def create_insights_researcher_agent():
     agent = create_openai_tools_agent(llm, tools, prompt)
     return functools.partial(agent_node, agent=AgentExecutor(agent=agent, tools=tools, verbose=True), name="Insight_Researcher")
 
-
 def build_graph():
     supervisor_chain = create_supervisor()
     search_node = create_search_agent()
     insights_node = create_insights_researcher_agent()
 
     graph_builder = StateGraph(AgentState)
-    graph_builder.add_node("Supervisor", supervisor_chain)
+    graph_builder.add_node("Supervisor", functools.partial(supervisor_node, supervisor_chain=supervisor_chain))
     graph_builder.add_node("Web_Searcher", search_node)
     graph_builder.add_node("Insight_Researcher", insights_node)
 
@@ -115,10 +114,9 @@ def build_graph():
 
     return graph_builder.compile()
 
-
 def run_graph(input_message: str) -> str:
     graph = build_graph()
-    result = graph.invoke({"messages": [HumanMessage(content=input_message)]})
+    result = graph.invoke({"messages": [HumanMessage(content=input_message)], "steps": 0})
 
     content = result["messages"][1].content
     output, refs = "", []
@@ -127,7 +125,6 @@ def run_graph(input_message: str) -> str:
             refs.append(line.strip())
         else:
             output += line + "\n"
-
     if refs:
         output += "\n**References:**\n" + "\n".join(refs)
     return output
@@ -136,7 +133,6 @@ def ask(input_message: str) -> str:
     return run_graph(input_message)
 
 if __name__ == "__main__":
-    from load_local_settings import load_local_settings
     load_local_settings()
     query = (
         "Using only the file "
@@ -144,25 +140,3 @@ if __name__ == "__main__":
         "who are the listed board of directors and what is their position"
     )
     print(run_graph(query))
-    """
-    test_queries = [
-        # 1. SEC document extraction
-        "Using only the file https://www.sec.gov/Archives/edgar/data/320193/000130817925000008/aapl4359751-def14a.htm who are the listed board of directors and what is their position",
-        # 2. Simple factual web search
-        "What is the capital city of Australia?",
-        # 3. Multi-topic insight request
-        "Analyze recent trends in electric vehicle adoption and summarize the top three factors driving growth",
-        # 4. Another document-based query (HTML)
-        "From https://en.wikipedia.org/wiki/Python_(programming_language) list the key design philosophies of Python",
-        # 5. General opinion synthesis
-        "Compare the pros and cons of remote work versus in-office work"
-    ]
-
-    for i, q in enumerate(test_queries, 1):
-        print(f"\n=== Test {i} ===")
-        print("Query:", q)
-        print("Result:")
-        print(run_graph(q))
-        print("\n" + "-" * 60)
-
-"""
