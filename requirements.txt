@@ -9,4 +9,4 @@ requests
 beautifulsoup4
 langchain
 langgraph
-langchain-openai
+langchain_openai
