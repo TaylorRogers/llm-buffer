@@ -10,3 +10,4 @@ def llm_buffer(req: func.HttpRequest) -> func.HttpResponse:
 
 @app.route(route="http_trigger", auth_level=func.AuthLevel.FUNCTION)
 def deploy1(req: func.HttpRequest) -> func.HttpResponse:
+    return func.HttpResponse("ok", status_code=200)

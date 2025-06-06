@@ -57,7 +57,7 @@ def summarize_content(content, prompt, client, log=None):
     try:
         log.append("🧠 Summarizing content...")
         result = client.chat.completions.create(
-            model="gpt-4o",
+            model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": content}
@@ -114,7 +114,7 @@ def web_search_fn(search_query, log=None):
         )
         log.append("📦 Building response from direct document...")
         response = client.chat.completions.create(
-            model="gpt-4o",
+            model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": final_prompt},
                 {"role": "user", "content": content}
@@ -143,7 +143,7 @@ def web_search_fn(search_query, log=None):
     )
     log.append("📦 Building final summary response (from Google)...")
     final_response = client.chat.completions.create(
-        model="gpt-4o",
+        model="gpt-4o-mini",
         messages=[
             {"role": "system", "content": final_prompt},
             {"role": "user", "content": str(structured_data)}
@@ -181,7 +181,7 @@ def create_web_search_agent():
         MessagesPlaceholder(variable_name="agent_scratchpad"),
     ])
 
-    llm = ChatOpenAI(model="gpt-4o", temperature=0, verbose=True)
+    llm = ChatOpenAI(model="gpt-4o-mini", temperature=0, verbose=True)
     agent = create_openai_tools_agent(llm, [web_search], prompt)
 
     return AgentExecutor(

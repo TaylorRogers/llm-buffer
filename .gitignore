@@ -126,7 +126,6 @@ dmypy.json
 bin
 obj
 appsettings.json
-local.settings.json
 
 # Azurite artifacts
 __blobstorage__
@@ -135,5 +134,4 @@ __azurite_db*__.json
 .python_packages
 
 # Azure Function local settings (secrets)
-local.settings.jsonlocal.settings.json 
-local.settings.json 
+local.settings.json
