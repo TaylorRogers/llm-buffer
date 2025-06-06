@@ -19,3 +19,13 @@ GET /api/llm_buffer?query=What+is+the+capital+of+Germany&model=gpt-4o-mini
 
 Cached responses are stored under the `llm-cache` container in blob storage, keyed by the query and model name.
 
+## API Endpoints
+
+All routes are served under the `/api` prefix when running as an Azure Function.
+
+- `GET /api/llm_buffer` – main query endpoint.
+  - `query` *(required)* – question to answer.
+  - `model` *(optional)* – OpenAI model name (default `gpt-4o-mini`).
+  - `showlog` *(optional)* – set to `1` for JSON output with debug logs.
+- `GET /api/http_trigger` – simple health check returning `"ok"`.
+
