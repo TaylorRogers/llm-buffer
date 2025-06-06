@@ -16,6 +16,7 @@ if str(project_root) not in sys.path:
 
 from tools.load_local_settings import load_local_settings
 from tools.web_search_agent import create_web_search_agent
+from tools.smart_agent import create_smart_agent
 
 class AgentState(TypedDict):
     messages: Annotated[Sequence[BaseMessage], operator.add]
@@ -31,7 +32,7 @@ def agent_node(state, agent: AgentExecutor, name: str):
     return update
 
 def get_members():
-    return ["Web_Searcher", "Insight_Researcher"]
+    return ["Web_Searcher", "Insight_Researcher", "Smart_Agent"]
 
 def create_supervisor():
     members = get_members()
@@ -39,7 +40,8 @@ def create_supervisor():
     system_prompt = (
         f"As a supervisor, oversee the full user query and route it to the right worker:\n"
         f"- If it contains a document URL, use Web_Searcher.\n"
-        f"- Otherwise, if deeper analysis is needed, use Insight_Researcher.\n"
+        f"- Otherwise, if basic reasoning suffices, use Insight_Researcher.\n"
+        f"- For very challenging queries, you MAY use Smart_Agent, but only if strictly necessary as it is expensive.\n"
         f"- Web_Searcher may be used only once per query.\n"
         f"Choose one of: {members} or FINISH."
     )
@@ -63,7 +65,7 @@ def create_supervisor():
         ("system", "Who should act next? Select one of: {options}"),
     ]).partial(options=str(options), members=", ".join(members))
 
-    llm = ChatOpenAI(model="gpt-4o", temperature=0, verbose=True)
+    llm = ChatOpenAI(model="gpt-4o-mini", temperature=0, verbose=True)
     return (
         prompt
         | llm.bind_functions(functions=[function_def], function_call="route")
@@ -85,7 +87,7 @@ def create_search_agent():
     return functools.partial(agent_node, agent=agent, name="Web_Searcher")
 
 def create_insights_researcher_agent():
-    llm = ChatOpenAI(model="gpt-4o", temperature=0, verbose=True)
+    llm = ChatOpenAI(model="gpt-4o-mini", temperature=0, verbose=True)
     tools = []
     system_prompt = (
         "You are an Insight Researcher. Do step-by-step analysis:\n"
@@ -101,15 +103,21 @@ def create_insights_researcher_agent():
     agent = create_openai_tools_agent(llm, tools, prompt)
     return functools.partial(agent_node, agent=AgentExecutor(agent=agent, tools=tools, verbose=True), name="Insight_Researcher")
 
+def create_smart_agent_node():
+    agent = create_smart_agent()
+    return functools.partial(agent_node, agent=agent, name="Smart_Agent")
+
 def build_graph():
     supervisor_chain = create_supervisor()
     search_node = create_search_agent()
     insights_node = create_insights_researcher_agent()
+    smart_node = create_smart_agent_node()
 
     graph_builder = StateGraph(AgentState)
     graph_builder.add_node("Supervisor", functools.partial(supervisor_node, supervisor_chain=supervisor_chain))
     graph_builder.add_node("Web_Searcher", search_node)
     graph_builder.add_node("Insight_Researcher", insights_node)
+    graph_builder.add_node("Smart_Agent", smart_node)
 
     for member in get_members():
         graph_builder.add_edge(member, "Supervisor")
