@@ -20,11 +20,15 @@ from tools.web_search_agent import create_web_search_agent
 class AgentState(TypedDict):
     messages: Annotated[Sequence[BaseMessage], operator.add]
     next: str
-    steps: int  # NEW: track supervisor recursions
+    steps: int  # track supervisor recursions
+    web_search_count: int  # limit web search usage
 
 def agent_node(state, agent: AgentExecutor, name: str):
     result = agent.invoke(state)
-    return {"messages": [HumanMessage(content=result["output"], name=name)]}
+    update = {"messages": [HumanMessage(content=result["output"], name=name)]}
+    if name == "Web_Searcher":
+        update["web_search_count"] = state.get("web_search_count", 0) + 1
+    return update
 
 def get_members():
     return ["Web_Searcher", "Insight_Researcher"]
@@ -36,6 +40,7 @@ def create_supervisor():
         f"As a supervisor, oversee the full user query and route it to the right worker:\n"
         f"- If it contains a document URL, use Web_Searcher.\n"
         f"- Otherwise, if deeper analysis is needed, use Insight_Researcher.\n"
+        f"- Web_Searcher may be used only once per query.\n"
         f"Choose one of: {members} or FINISH."
     )
 
@@ -71,6 +76,8 @@ def supervisor_node(state, supervisor_chain):
         return {"next": "FINISH", "messages": state["messages"], "steps": steps}
     out = supervisor_chain.invoke(state)
     out["steps"] = steps
+    if state.get("web_search_count", 0) >= 1 and out.get("next") == "Web_Searcher":
+        out["next"] = "Insight_Researcher"
     return out
 
 def create_search_agent():
@@ -116,7 +123,11 @@ def build_graph():
 
 def run_graph(input_message: str) -> str:
     graph = build_graph()
-    result = graph.invoke({"messages": [HumanMessage(content=input_message)], "steps": 0})
+    result = graph.invoke({
+        "messages": [HumanMessage(content=input_message)],
+        "steps": 0,
+        "web_search_count": 0,
+    })
 
     content = result["messages"][1].content
     output, refs = "", []
